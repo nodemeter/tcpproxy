@@ -76,7 +76,7 @@ func timeMin(x, y time.Time) time.Time {
 func serveConnection(conn net.Conn, results resultChannel, deadline time.Time) {
     start := time.Now()
     var buf = make([]byte, 4096)
-    reader := bufio.NewReaderSize(conn, 10)
+    reader := bufio.NewReaderSize(conn, 1000)
     for {
         n, err := reader.Read(buf)
         if n > 0 {
@@ -104,7 +104,7 @@ func getActivity(actions resultChannel, timeout time.Duration, expectedRecords i
     }
     return records
 }
-func Test(t *testing.T) {
+func TestTestingTools(t *testing.T) {
     Convey("basic operation", t, func() {
         stub := runServerStub()
         results := stub.acceptAndServeConnection(time.Now().Add(2000 * time.Millisecond))
@@ -128,5 +128,36 @@ func Test(t *testing.T) {
         So(activity[2].action, ShouldEqual, "read")
         So(activity[3].action, ShouldEqual, "eof")
         So(4, ShouldEqual, len(activity))
+    })
+}
+
+func Test(t *testing.T) {
+    Convey("basic operation", t, func() {
+        stub := runServerStub()
+        results := stub.acceptAndServeConnection(time.Now().Add(2000 * time.Millisecond))
+
+        proxy := RunProxy(stub.listener.Addr().String(), "localhost:0")
+
+        dialer := &net.Dialer{Timeout: 100 * time.Millisecond}
+        conn, _ := dialer.Dial("tcp", proxy.addr)
+        conn.Write([]byte("foo bar 1234567890\n"))
+
+        time.AfterFunc(
+            50*time.Millisecond,
+            func() {
+                conn.Write([]byte("foo bar 1234567890\n"))
+                conn.Close()
+            },
+        )
+        time.Sleep(2000 * time.Millisecond)
+        close(results)
+        activity := getActivity(results, 200*time.Millisecond, 10)
+        So(activity[0].action, ShouldEqual, "accepted")
+        So(activity[1].action, ShouldEqual, "read")
+        So(activity[2].action, ShouldEqual, "read")
+        So(activity[3].action, ShouldEqual, "eof")
+        So(4, ShouldEqual, len(activity))
+
+        So(1, ShouldEqual, proxy.connectionsAccepted())
     })
 }
