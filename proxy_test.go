@@ -107,7 +107,7 @@ func getActivity(actions resultChannel, timeout time.Duration, expectedRecords i
 func TestTestingTools(t *testing.T) {
     Convey("basic operation", t, func() {
         stub := runServerStub()
-        results := stub.acceptAndServeConnection(time.Now().Add(2000 * time.Millisecond))
+        results := stub.acceptAndServeConnection(time.Now().Add(200 * time.Millisecond))
 
         dialer := &net.Dialer{Timeout: 100 * time.Millisecond}
         conn, _ := dialer.Dial("tcp", stub.listener.Addr().String())
@@ -134,7 +134,7 @@ func TestTestingTools(t *testing.T) {
 func Test(t *testing.T) {
     Convey("basic operation", t, func() {
         stub := runServerStub()
-        results := stub.acceptAndServeConnection(time.Now().Add(2000 * time.Millisecond))
+        results := stub.acceptAndServeConnection(time.Now().Add(200 * time.Millisecond))
 
         proxy := RunProxy(stub.listener.Addr().String(), "localhost:0")
 
@@ -152,11 +152,11 @@ func Test(t *testing.T) {
         time.Sleep(2000 * time.Millisecond)
         close(results)
         activity := getActivity(results, 200*time.Millisecond, 10)
+        So(4, ShouldEqual, len(activity))
         So(activity[0].action, ShouldEqual, "accepted")
         So(activity[1].action, ShouldEqual, "read")
         So(activity[2].action, ShouldEqual, "read")
         So(activity[3].action, ShouldEqual, "eof")
-        So(4, ShouldEqual, len(activity))
 
         So(1, ShouldEqual, proxy.connectionsAccepted())
     })

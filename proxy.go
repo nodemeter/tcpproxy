@@ -46,40 +46,46 @@ func (info *ProxyInfo) processConnections(connections chan net.Conn) {
 }
 
 func (info *ProxyInfo) proxyConnection(c net.Conn) {
-    defer c.Close()
     dialer := &net.Dialer{Timeout: 100 * time.Millisecond}
     t, err := dialer.Dial("tcp", info.targetAddr)
     if err != nil {
         log.Fatal(fmt.Sprintf("can't open connection to %s", info.targetAddr))
     }
-    defer t.Close()
 
-    var buf = make([]byte, 4096)
-    creader := bufio.NewReaderSize(c, 4096)
-    // treader := bufio.NewReaderSize(t, 4096)
-    for {
-        if !transmit(creader, buf, t) {
-            break
-        }
-        // if !transmit(treader, buf, c) {
-        //     break
-        // }
-        time.Sleep(10 * time.Millisecond)
+    cClosed := make(chan bool)
+    tClosed := make(chan bool)
+
+    go proxyA2B(c, t, cClosed)
+    go proxyA2B(t, c, tClosed)
+
+    select {
+    case <-cClosed:
+        log.Println("source connection is closed. Closing target")
+        t.Close()
+    case <-tClosed:
+        log.Println("target connection is closed. Closing source")
+        c.Close()
     }
 }
 
-func transmit(reader *bufio.Reader, buf []byte, t net.Conn) bool {
-    n, err := reader.Read(buf)
-    if n > 0 {
-        t.Write(buf[0:n])
+func proxyA2B(s, t net.Conn, sClosed chan bool) {
+    buf := make([]byte, 4096)
+    reader := bufio.NewReaderSize(s, 4096)
+    for {
+        n, err := reader.Read(buf)
+        if n > 0 {
+            t.Write(buf[0:n])
+        }
+        if err == io.EOF {
+            sClosed <- true
+            return
+        }
+        if err != nil {
+            log.Println(err)
+            return
+        }
+        time.Sleep(10 * time.Millisecond)
     }
-    if err == io.EOF {
-        return false
-    }
-    if err != nil {
-        log.Fatal(err)
-    }
-    return true
 }
 
 func (proxy *ProxyInfo) connectionsAccepted() int {
