@@ -2,10 +2,14 @@ package main
 
 import (
     "bufio"
+    "flag"
     "fmt"
     "io"
     "log"
     "net"
+    "os"
+    "os/signal"
+    "syscall"
     "time"
 )
 
@@ -46,10 +50,11 @@ func (info *ProxyInfo) processConnections(connections chan net.Conn) {
 }
 
 func (info *ProxyInfo) proxyConnection(c net.Conn) {
-    dialer := &net.Dialer{Timeout: 100 * time.Millisecond}
+    dialer := &net.Dialer{Timeout: 1000 * time.Millisecond}
     t, err := dialer.Dial("tcp", info.targetAddr)
     if err != nil {
-        log.Fatal(fmt.Sprintf("can't open connection to %s", info.targetAddr))
+        log.Fatal(fmt.Sprintf("can't open connection to %s: %s", info.targetAddr, err))
+        c.Close()
     }
 
     cClosed := make(chan bool)
@@ -75,19 +80,37 @@ func proxyA2B(s, t net.Conn, sClosed chan bool) {
         n, err := reader.Read(buf)
         if n > 0 {
             t.Write(buf[0:n])
+            log.Println(fmt.Sprintf("wrote %d bytes", n))
         }
         if err == io.EOF {
             sClosed <- true
             return
         }
         if err != nil {
-            log.Println(err)
+            log.Println(fmt.Sprintf("read error: %s", err))
             return
         }
-        time.Sleep(10 * time.Millisecond)
     }
 }
 
 func (proxy *ProxyInfo) connectionsAccepted() int {
     return 1
+}
+
+func main() {
+    var local = flag.String("local", "localhost:9090", "local address host:port")
+    var target = flag.String("target", "", "target address host:port")
+    flag.Parse()
+    if *target == "" {
+        log.Fatal("target is required argument")
+    }
+    var p = RunProxy(*target, *local)
+    fmt.Println(p)
+
+    c := make(chan os.Signal, 1)
+    signal.Notify(c, syscall.SIGTERM, syscall.SIGINT)
+    sig := <-c
+    if sig == syscall.SIGINT {
+        fmt.Println()
+    }
 }
